@@ -1,0 +1,223 @@
+{
+  "name": "Personal Finance AI Assistant with React Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "finance-assistant",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c0dd8c0f-0dc1-4f76-9d33-ff6d04fef9a9",
+      "name": "React App Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "a6631865-4e30-42f6-8124-0b2ac9d17f19"
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json.body || {};\nconst context = body.context || {};\nconst profileData = (context.profile && context.profile.profileData) ? context.profile.profileData : {};\nconst budget = context.budgetSummary || {};\nconst goals = Array.isArray(context.goals) ? context.goals : [];\nconst categories = Array.isArray(context.topCategories) ? context.topCategories : [];\nconst fullCategoryBreakdown = Array.isArray(budget.expenses?.byCategory) ? budget.expenses.byCategory : [];\nconst safeNumber = (value, fallback = 0) => {\n  const num = Number(value);\n  return Number.isFinite(num) ? num : fallback;\n};\nconst normalizeName = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');\nconst coreDomains = [\n  { key: 'finance', label: 'Finance' },\n  { key: 'education', label: 'Education' },\n  { key: 'family', label: 'Family' },\n  { key: 'friends', label: 'Friends' },\n  { key: 'weekend activities/vacation', label: 'Weekend Activities/Vacation' },\n];\nconst palette = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#14b8a6', '#0ea5e9', '#6366f1'];\nconst pickColors = (count, offset = 0) => Array.from({ length: Math.max(count, 0) }, (_, idx) => palette[(idx + offset) % palette.length]);\nconst clampPercentage = (value) => Math.min(Math.max(safeNumber(value), 0), 100);\nconst formatCurrency = (value) => {\n  if (typeof value === 'number' && isFinite(value)) {\n    return `$${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;\n  }\n  return 'N/A';\n};\nconst formatNumber = (value, digits = 1) => {\n  if (typeof value === 'number' && isFinite(value)) {\n    return value.toLocaleString('en-US', { maximumFractionDigits: digits });\n  }\n  return 'N/A';\n};\nconst formatUtilization = (value) => {\n  if (typeof value === 'number' && isFinite(value)) {\n    return `${value.toFixed(1)}%`;\n  }\n  return 'N/A';\n};\nconst determineUnit = (goal) => (typeof goal?.metricUnit === 'string' ? goal.metricUnit.toLowerCase() : 'currency');\nconst formatGoalTarget = (goal) => {\n  const unit = determineUnit(goal);\n  switch (unit) {\n    case 'hours':\n      return `${formatNumber(goal.targetAmount ?? 0)} hrs`;\n    case 'points':\n      return `${formatNumber(goal.targetAmount ?? 0, 0)} pts`;\n    case 'tasks':\n      return `${formatNumber(goal.targetAmount ?? 0, 0)} tasks`;\n    case 'percent':\n      return `${formatNumber(goal.targetAmount ?? 0)}%`;\n    default:\n      return formatCurrency(Number(goal.targetAmount ?? 0));\n  }\n};\nconst formatGoalRemaining = (goal) => {\n  const unit = determineUnit(goal);\n  const remaining = goal.computed?.remainingAmount ?? 0;\n  switch (unit) {\n    case 'hours':\n      return `${formatNumber(remaining)} hrs left`;\n    case 'points':\n      return `${formatNumber(remaining, 0)} pts left`;\n    case 'tasks':\n      return `${formatNumber(remaining, 0)} tasks left`;\n    case 'percent':\n      return `${formatNumber(remaining)}% left`;\n    default:\n      return `${formatCurrency(Number(remaining))} left`;\n  }\n};\nconst buildGoalDetails = (goal) => {\n  const details = [];\n  const completion = typeof goal.completionPercentage === 'number'\n    ? `${goal.completionPercentage.toFixed(1)}% complete`\n    : 'Progress unknown';\n  details.push(completion);\n  details.push(`Target: ${formatGoalTarget(goal)}`);\n  details.push(formatGoalRemaining(goal));\n  if (goal.computed?.timeRemainingDays && goal.computed.timeRemainingDays > 0) {\n    details.push(`${goal.computed.timeRemainingDays} days remaining`);\n  }\n  if (goal.computed?.education) {\n    const edu = goal.computed.education;\n    if (typeof edu.hoursRemaining === 'number') {\n      details.push(`${formatNumber(edu.hoursRemaining)} study hrs left`);\n    }\n    if (typeof edu.weeklyHoursNeeded === 'number') {\n      details.push(`Need ${formatNumber(edu.weeklyHoursNeeded)} hrs/week`);\n    }\n    if (Array.isArray(edu.focusAreas) && edu.focusAreas.length) {\n      details.push(`Focus: ${edu.focusAreas.join(', ')}`);\n    }\n    if (edu.nextMilestone) {\n      details.push(`Next: ${edu.nextMilestone}`);\n    }\n  }\n  return details.join(' | ');\n};\nconst formatGoalLine = (goal) => `${goal.name} (${goal.goalType}) -> ${buildGoalDetails(goal)}`;\nconst fixedExpenses = profileData.fixedExpenses || {};\nconst fixedExpenseLines = Object.entries(fixedExpenses).map(([key, val]) => `${key}: ${formatCurrency(Number(val))}`);\nconst profileSummary = [\n  `Bank Balance: ${formatCurrency(Number(profileData.bankAccountBalance))}`,\n  `Monthly Income: ${formatCurrency(Number(profileData.monthlyIncome))}`,\n  `Monthly Expenses: ${formatCurrency(Number(profileData.monthlyExpenses))}`,\n  `Job: ${profileData.jobTitle || 'Unknown'} (${profileData.employmentStatus || 'Unknown'})`,\n  fixedExpenseLines.length ? `Fixed Expenses -> ${fixedExpenseLines.join(', ')}` : 'Fixed Expenses: Not provided',\n].join('\\n');\nconst cashFlow = budget.cashFlow || {};\nconst runwayValue = cashFlow.runwayMonths === Infinity\n  ? 'Infinite'\n  : `${formatNumber(Number(cashFlow.runwayMonths ?? 0), 1)} months`;\nconst budgetSummary = [\n  `Disposable Income: ${formatCurrency(Number(cashFlow.disposableIncome))}`,\n  `Savings Rate: ${typeof cashFlow.savingsRate === 'number' ? cashFlow.savingsRate.toFixed(2) : '0.00'}%`,\n  `Projected Annual Savings: ${formatCurrency(Number(cashFlow.projectedAnnualSavings))}`,\n  `Runway: ${runwayValue}`,\n].join('\\n');\n\nconst goalsSummary = goals.length\n  ? goals.map((goal) => formatGoalLine(goal)).join('\\n')\n  : 'No active goals available yet.';\nconst educationGoals = goals.filter((goal) => (goal.goalType || '').toLowerCase() === 'education');\nconst educationSummary = educationGoals.length\n  ? educationGoals\n      .map((goal) => {\n        const edu = goal.computed?.education;\n        const examDate = goal.metadata?.examDate\n          ? new Date(goal.metadata.examDate).toISOString().split('T')[0]\n          : null;\n        const pieces = [formatGoalLine(goal)];\n        if (examDate) {\n          pieces.push(`Exam Date: ${examDate}`);\n        }\n        if (edu?.upcomingDeadline) {\n          pieces.push(`Next Deadline: ${edu.upcomingDeadline.split('T')[0]}`);\n        }\n        if (Array.isArray(goal.metadata?.resourceLinks) && goal.metadata.resourceLinks.length) {\n          const resources = goal.metadata.resourceLinks\n            .map((resource) => (resource?.label ? resource.label : resource?.url))\n            .filter(Boolean)\n            .slice(0, 3);\n          if (resources.length) {\n            pieces.push(`Resources: ${resources.join(', ')}`);\n          }\n        }\n        return pieces.join(' - ');\n      })\n      .join('\\n')\n  : 'No education goals on file yet.';\nconst topCategorySummary = categories.length\n  ? categories.map((cat) => `${cat.name}: spent ${formatCurrency(cat.spentAmount)} of ${formatCurrency(cat.budgetAllocated)}`).join('\\n')\n  : 'No category data available yet.';\nconst categoryLookup = fullCategoryBreakdown.reduce((acc, category) => {\n  const key = normalizeName(category.name);\n  if (key && !acc[key]) {\n    acc[key] = category;\n  }\n  return acc;\n}, {});\nconst lifeDomainLines = coreDomains.map(({ key, label }) => {\n  const category = categoryLookup[key];\n  if (!category) {\n    return `${label}: no recent data captured yet.`;\n  }\n  const spent = formatCurrency(Number(category.spentAmount));\n  const budgetAllocated = formatCurrency(Number(category.budgetAllocated));\n  const utilization = formatUtilization(Number(category.utilization ?? 0));\n  return `${label}: spent ${spent} of ${budgetAllocated} (${utilization} used)`;\n});\nconst otherCategories = fullCategoryBreakdown.filter((category) => {\n  const key = normalizeName(category.name);\n  return key && !coreDomains.some((domain) => domain.key === key);\n});\nconst otherCategorySummary = otherCategories.length\n  ? otherCategories\n      .map((cat) => `${cat.name}: ${formatCurrency(Number(cat.spentAmount))} of ${formatCurrency(Number(cat.budgetAllocated))}`)\n      .join('\\n')\n  : 'No additional category data yet.';\nconst metrics = [];\nconst topCategories = fullCategoryBreakdown\n  .filter((cat) => typeof cat?.name === 'string')\n  .slice(0, 6);\nif (topCategories.length) {\n  const categoryLabels = topCategories.map((cat) => cat.name);\n  const categorySpentData = topCategories.map((cat) => safeNumber(cat.spentAmount));\n  const categoryBudgetData = topCategories.map((cat) => safeNumber(cat.budgetAllocated));\n  const hasCategoryData = categorySpentData.some((value) => value > 0) || categoryBudgetData.some((value) => value > 0);\n  if (hasCategoryData) {\n    metrics.push({\n      id: 'category-spending',\n      title: 'Spending vs Budget by Category',\n      type: 'bar',\n      labels: categoryLabels,\n      datasets: [\n        {\n          label: 'Spent',\n          data: categorySpentData,\n          backgroundColor: palette[0],\n        },\n        {\n          label: 'Budget',\n          data: categoryBudgetData,\n          backgroundColor: palette[1],\n        },\n      ],\n      summary: 'How much you spent against the budget across your top categories.',\n      unit: 'currency',\n    });\n  }\n}\nconst domainLabels = [];\nconst domainSpent = [];\ncoreDomains.forEach((domain) => {\n  const category = categoryLookup[domain.key];\n  const spentValue = safeNumber(category?.spentAmount);\n  if (spentValue > 0) {\n    domainLabels.push(domain.label);\n    domainSpent.push(spentValue);\n  }\n});\nif (domainLabels.length) {\n  metrics.push({\n    id: 'life-domain-spending',\n    title: 'Spending by Life Domain',\n    type: 'pie',\n    labels: domainLabels,\n    datasets: [\n      {\n        label: 'Spent',\n        data: domainSpent,\n        backgroundColor: pickColors(domainLabels.length),\n      },\n    ],\n    summary: 'Distribution of your recent spending across core life domains.',\n    unit: 'currency',\n  });\n}\nconst goalLabels = [];\nconst goalCompletionData = [];\ngoals.forEach((goal) => {\n  if (typeof goal?.name !== 'string') {\n    return;\n  }\n  goalLabels.push(goal.name);\n  goalCompletionData.push(clampPercentage(goal.completionPercentage ?? 0));\n});\nif (goalLabels.length) {\n  metrics.push({\n    id: 'goal-progress',\n    title: 'Goal Completion Overview',\n    type: 'bar',\n    labels: goalLabels,\n    datasets: [\n      {\n        label: 'Completion %',\n        data: goalCompletionData,\n        backgroundColor: palette[2],\n      },\n    ],\n    summary: 'Progress toward each active goal as a percentage complete.',\n    unit: 'percent',\n  });\n}\nconst educationLabels = [];\nconst educationCompleted = [];\nconst educationRemaining = [];\neducationGoals.forEach((goal) => {\n  if (typeof goal?.name !== 'string') {\n    return;\n  }\n  const edu = goal.computed?.education || {};\n  const targetHours = safeNumber(goal.targetAmount ?? edu.totalHours ?? 0);\n  const remainingHours = safeNumber(edu.hoursRemaining ?? 0);\n  if (targetHours <= 0) {\n    return;\n  }\n  const completedHours = Math.max(targetHours - remainingHours, 0);\n  educationLabels.push(goal.name);\n  educationCompleted.push(completedHours);\n  educationRemaining.push(Math.max(remainingHours, 0));\n});\nif (educationLabels.length) {\n  metrics.push({\n    id: 'education-hours',\n    title: 'Education Hours Checklist',\n    type: 'bar',\n    labels: educationLabels,\n    datasets: [\n      {\n        label: 'Completed Hours',\n        data: educationCompleted,\n        backgroundColor: palette[3],\n      },\n      {\n        label: 'Hours Remaining',\n        data: educationRemaining,\n        backgroundColor: palette[4],\n      },\n    ],\n    summary: 'Study hours completed versus remaining for education goals.',\n    unit: 'hours',\n  });\n}\nconst monthlyIncome = Math.max(safeNumber(profileData.monthlyIncome), 0);\nconst monthlyExpenses = Math.max(safeNumber(profileData.monthlyExpenses), 0);\nconst disposableIncome = Math.max(safeNumber(cashFlow.disposableIncome), 0);\nif (monthlyIncome || monthlyExpenses || disposableIncome) {\n  metrics.push({\n    id: 'cashflow-breakdown',\n    title: 'Monthly Cash Flow',\n    type: 'pie',\n    labels: ['Income', 'Expenses', 'Disposable'],\n    datasets: [\n      {\n        label: 'USD',\n        data: [monthlyIncome, monthlyExpenses, disposableIncome],\n        backgroundColor: pickColors(3),\n      },\n    ],\n    summary: 'Monthly income versus expenses and leftover cash.',\n    unit: 'currency',\n  });\n}\nconst chartCandidates = metrics;\nconst history = Array.isArray(body.history) ? body.history : [];\nreturn [{\n  json: {\n    ...$json,\n    chartCandidates,\n    contextData: {\n      profileSummary,\n      budgetSummary,\n      goalsSummary,\n      educationSummary,\n      topCategorySummary,\n      lifeDomainSummary: lifeDomainLines.join('\\n'),\n      otherCategorySummary,\n      chartCandidates,\n      rawContext: context,\n      history,\n    },\n  },\n}];"
+      },
+      "id": "6ba92565-f638-4db7-a2ff-62f425d3e29a",
+      "name": "Build Context Summary",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are Finny, the user's GenZ mentor friend across money, education, family obligations, friendships, and weekend/vacation planning. You blend life advice with budget-aware guidance so every recommendation respects their numbers and milestones.\n\nFinancial Snapshot:\n{{ $json.contextData.profileSummary }}\n\nBudget Highlights:\n{{ $json.contextData.budgetSummary }}\n\nGoals Overview:\n{{ $json.contextData.goalsSummary }}\n\nEducation Focus:\n{{ $json.contextData.educationSummary }}\n\nCore Life Domains (Finance / Education / Family / Friends / Weekend & Vacations):\n{{ $json.contextData.lifeDomainSummary }}\n\nOther Categories:\n{{ $json.contextData.otherCategorySummary }}\n\nChart Candidates (ground truth for metrics):\n{{ JSON.stringify($json.contextData.chartCandidates) }}\n\nRecent Messages (last few):\n{{ $json.contextData.history.slice(-3).map(msg => msg.role + ': ' + msg.content).join('\\n') }}\n\nTone & Format Rules:\n- Kick off with a quick, warm hook (\"hey!\", \"love this\", etc.).\n- Use short sentences or bullets; keep it skimmable.\n- Call out the life domain(s) you're tackling and anchor advice to the data above (income lines, goals, study hours, runway, etc.).\n- Offer at least two actionable tips or paths, ideally covering different domains or trade-offs.\n- If details are missing for a domain, ask a targeted follow-up before assuming.\n- Keep the GenZ vibe without losing clarity; emojis or slang only when they land (max 2 emojis).\n- Wrap with an encouraging nudge (\"you got this!\").\n- Output must be valid JSON using this structure exactly:\n{\n  \"reply\": \"Main answer with short paragraphs or bullets\",\n  \"suggestions\": [\"Actionable tip\", \"Another tip\"],\n  \"metrics\": [\n    {\n      \"id\": \"alias-friendly-slug\",\n      \"title\": \"Readable title\",\n      \"type\": \"bar | pie\",\n      \"labels\": [\"Label 1\", \"Label 2\"],\n      \"datasets\": [\n        { \"label\": \"Series name\", \"data\": [12, 42], \"backgroundColor\": \"#2563eb\" }\n      ],\n      \"summary\": \"1 sentence on what this chart shows\",\n      \"unit\": \"currency | percent | hours | tasks\"\n    }\n  ]\n}\n- Pull numeric values for metrics directly from the chart candidates above or the raw context; keep them as numbers (no % or $ symbols inside data arrays).\n- Include up to 3 charts that best support the reply; leave \"metrics\": [] if nothing meaningful fits the chart templates.\n\nUser Question: {{ $json.body.message }}",
+        "options": {}
+      },
+      "id": "ed653baf-5e50-499f-a3b5-ac5386afebab",
+      "name": "Personal Finance AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        512,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "4e30137f-751c-4a73-be6e-c64c4892fb85",
+      "name": "OpenAI GPT-4o Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        224
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "e1R57uEsZ54xTa5V",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionId": "={{ $json.body.sessionId }}",
+        "contextWindowLength": 10
+      },
+      "id": "f00acc83-528b-44ec-bfb4-ac3cbabec2ae",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        576,
+        224
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a5beb7de-8c72-4319-ac4e-8da5e6c26bbc",
+      "name": "BudgetCalculatorTool",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        848,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "let output = $json.output ?? $json;\nconst palette = ['#2563eb', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#14b8a6', '#0ea5e9', '#6366f1'];\nconst pickColors = (count, offset = 0) => Array.from({ length: Math.max(count, 0) }, (_, idx) => palette[(idx + offset) % palette.length]);\nconst result = {\n  reply: '',\n  suggestions: [],\n  metrics: [],\n  metadata: $json.metadata || null,\n};\nconst toNumber = (value) => {\n  if (typeof value === 'number' && isFinite(value)) {\n    return value;\n  }\n  const num = Number(value);\n  return Number.isFinite(num) ? num : null;\n};\nconst sanitizeDataset = (dataset, index, labels, chartType) => {\n  if (!dataset || typeof dataset !== 'object') {\n    return null;\n  }\n  const seriesLabel = typeof dataset.label === 'string' && dataset.label.trim()\n    ? dataset.label.trim()\n    : `Series ${index + 1}`;\n  const dataValues = labels.map((_, idx) => {\n    const raw = Array.isArray(dataset.data) ? dataset.data[idx] : undefined;\n    const converted = toNumber(raw);\n    return converted !== null ? converted : 0;\n  });\n  const hasValue = dataValues.some((value) => value !== 0);\n  if (!hasValue) {\n    return null;\n  }\n  const cleaned = {\n    label: seriesLabel,\n    data: dataValues,\n  };\n  if (chartType === 'pie') {\n    const background = Array.isArray(dataset.backgroundColor)\n      ? dataset.backgroundColor.filter((color) => typeof color === 'string' && color.trim())\n      : [];\n    cleaned.backgroundColor = background.length === labels.length\n      ? background\n      : pickColors(labels.length, index);\n  } else if (typeof dataset.backgroundColor === 'string' && dataset.backgroundColor.trim()) {\n    cleaned.backgroundColor = dataset.backgroundColor.trim();\n  } else if (Array.isArray(dataset.backgroundColor) && dataset.backgroundColor.length) {\n    cleaned.backgroundColor = dataset.backgroundColor\n      .map((color) => (typeof color === 'string' && color.trim() ? color.trim() : null))\n      .filter(Boolean);\n  } else {\n    cleaned.backgroundColor = palette[index % palette.length];\n  }\n  if (typeof dataset.borderColor === 'string' && dataset.borderColor.trim()) {\n    cleaned.borderColor = dataset.borderColor.trim();\n  }\n  if (typeof dataset.stack === 'string' && dataset.stack.trim()) {\n    cleaned.stack = dataset.stack.trim();\n  }\n  return cleaned;\n};\nconst sanitizeMetric = (metric, index) => {\n  if (!metric || typeof metric !== 'object') {\n    return null;\n  }\n  const type = typeof metric.type === 'string' ? metric.type.trim().toLowerCase() : '';\n  if (!['bar', 'pie'].includes(type)) {\n    return null;\n  }\n  const labels = Array.isArray(metric.labels)\n    ? metric.labels\n        .map((label) => {\n          if (typeof label === 'string') {\n            return label.trim();\n          }\n          if (label === null || label === undefined) {\n            return '';\n          }\n          return String(label);\n        })\n        .filter((label) => label.length)\n    : [];\n  if (!labels.length) {\n    return null;\n  }\n  const datasetsRaw = Array.isArray(metric.datasets) ? metric.datasets : [];\n  const datasets = datasetsRaw\n    .map((dataset, datasetIndex) => sanitizeDataset(dataset, datasetIndex, labels, type))\n    .filter(Boolean);\n  if (!datasets.length) {\n    return null;\n  }\n  const cleaned = {\n    id: typeof metric.id === 'string' && metric.id.trim() ? metric.id.trim() : `metric-${index + 1}`,\n    title: typeof metric.title === 'string' && metric.title.trim() ? metric.title.trim() : 'Metric',\n    type,\n    labels,\n    datasets,\n  };\n  if (typeof metric.summary === 'string' && metric.summary.trim()) {\n    cleaned.summary = metric.summary.trim();\n  }\n  if (typeof metric.unit === 'string' && metric.unit.trim()) {\n    cleaned.unit = metric.unit.trim();\n  }\n  return cleaned;\n};\nconst sanitizeMetrics = (value) => {\n  const metricsArray = Array.isArray(value) ? value : [];\n  const seen = new Set();\n  const sanitized = [];\n  metricsArray.forEach((metric, idx) => {\n    const cleaned = sanitizeMetric(metric, idx);\n    if (!cleaned) {\n      return;\n    }\n    let uniqueId = cleaned.id;\n    let suffix = 1;\n    while (seen.has(uniqueId)) {\n      suffix += 1;\n      uniqueId = `${cleaned.id}-${suffix}`;\n    }\n    cleaned.id = uniqueId;\n    seen.add(uniqueId);\n    sanitized.push(cleaned);\n  });\n  return sanitized.slice(0, 3);\n};\nconst mergeMetadata = (candidate) => {\n  if (candidate && typeof candidate === 'object') {\n    result.metadata = result.metadata && typeof result.metadata === 'object'\n      ? { ...result.metadata, ...candidate }\n      : candidate;\n  }\n};\nconst assignFromObject = (obj) => {\n  if (!obj || typeof obj !== 'object') {\n    return;\n  }\n  if (typeof obj.reply === 'string' && obj.reply.trim()) {\n    result.reply = obj.reply.trim();\n  }\n  if (!result.reply && typeof obj.message === 'string' && obj.message.trim()) {\n    result.reply = obj.message.trim();\n  }\n  if (!result.reply && typeof obj.output === 'string' && obj.output.trim()) {\n    result.reply = obj.output.trim();\n  }\n  if (Array.isArray(obj.suggestions)) {\n    result.suggestions = obj.suggestions.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim());\n  }\n  if (Array.isArray(obj.metrics)) {\n    const sanitized = sanitizeMetrics(obj.metrics);\n    if (sanitized.length) {\n      result.metrics = sanitized;\n    }\n  }\n  if (obj.metadata && typeof obj.metadata === 'object') {\n    mergeMetadata(obj.metadata);\n  }\n};\nif (typeof output === 'string') {\n  try {\n    const parsed = JSON.parse(output);\n    output = parsed;\n    assignFromObject(parsed);\n  } catch (error) {\n    result.reply = output.trim();\n  }\n} else {\n  assignFromObject(output);\n}\nif (!result.reply) {\n  result.reply = typeof $json.output === 'string' && $json.output.trim()\n    ? $json.output.trim()\n    : 'Finny hit a snag processing that message. Could you try again?';\n}\nif (!result.metrics.length) {\n  const fallbackSources = [\n    output?.metrics,\n    $json.metrics,\n    $json.chartCandidates,\n    $json.contextData?.chartCandidates,\n    $json.metadata?.metrics,\n  ];\n  for (const source of fallbackSources) {\n    if (result.metrics.length) {\n      break;\n    }\n    const sanitized = sanitizeMetrics(source);\n    if (sanitized.length) {\n      result.metrics = sanitized;\n    }\n  }\n}\nif (!result.suggestions.length) {\n  result.suggestions = [];\n}\nreturn [{ json: result }];"
+      },
+      "id": "1d5f171f-1b6e-4f3c-93a4-97bf4c9c5d4d",
+      "name": "Normalize Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        736,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "aff84e35-d236-4d96-81c3-bb7c1f73d389",
+      "name": "Send Response to React",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        912,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "React App Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Context Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context Summary": {
+      "main": [
+        [
+          {
+            "node": "Personal Finance AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-4o Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Personal Finance AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Personal Finance AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BudgetCalculatorTool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Personal Finance AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Personal Finance AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Normalize Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Response": {
+      "main": [
+        [
+          {
+            "node": "Send Response to React",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "executionTimeout": -1
+  },
+  "versionId": "a48bac8c-54ea-442e-a256-b602b24fa636",
+  "meta": {
+    "instanceId": "7ab36df1f4b75b378c7d0875ee74918a5dd1d39102fea71d6c00d6643b1b4a29"
+  },
+  "id": "do5M39j9aJnSDbzu",
+  "tags": []
+}
