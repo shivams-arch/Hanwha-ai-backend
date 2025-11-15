@@ -1,40 +1,46 @@
-// // src/config/redis.config.ts
+import { createClient, RedisClientType } from 'redis';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 let redisClient: any = null;
 
-export const initializeRedis = async () => {
-  if (redisClient) return redisClient;
+export const initializeRedis = async (): Promise<RedisClientType> => {
+  if (redisClient) {
+    return redisClient;
+  }
 
-  const { createClient } = await import('redis'); // ESM-only package
+  const client = createClient({
+    socket: {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+    },
+    password: process.env.REDIS_PASSWORD || undefined,
+    database: parseInt(process.env.REDIS_DB || '0'),
+  });
 
-  const hasUrl = !!process.env.REDIS_URL;
-  const client = hasUrl
-    ? createClient({ url: process.env.REDIS_URL })
-    : createClient({
-        socket: {
-          host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT || '6379', 10),
-        },
-        password: process.env.REDIS_PASSWORD || undefined,
-        database: parseInt(process.env.REDIS_DB || '0', 10),
-      });
+  client.on('error', (err) => {
+    console.error('❌ Redis Client Error:', err);
+  });
 
-  client.on('error', (err: any) => console.error('❌ Redis Client Error:', err));
-  client.on('connect', () => console.log('✅ Redis connection established'));
+  client.on('connect', () => {
+    console.log('✅ Redis connection established');
+  });
 
   await client.connect();
-  redisClient = client;
-  return client;
+  redisClient = client as any;
+
+  return client as any;
 };
 
-export const getRedisClient = () => {
-  if (!redisClient) throw new Error('Redis client not initialized. Call initializeRedis() first.');
+export const getRedisClient = (): RedisClientType => {
+  if (!redisClient) {
+    throw new Error('Redis client not initialized. Call initializeRedis() first.');
+  }
   return redisClient;
 };
 
-export const closeRedis = async () => {
+export const closeRedis = async (): Promise<void> => {
   if (redisClient) {
     await redisClient.quit();
     redisClient = null;
@@ -42,6 +48,7 @@ export const closeRedis = async () => {
   }
 };
 
+// Redis key structure helpers
 export const RedisKeys = {
   session: (sessionId: string) => `session:${sessionId}`,
   conversation: (sessionId: string) => `conversation:${sessionId}`,
