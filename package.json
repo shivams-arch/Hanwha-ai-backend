@@ -1,8 +1,4 @@
 {
-  "engines": {
-    "node": "20.19.5",
-    "npm": "10.8.2"
-  },
   "name": "aqua-thistle-backend",
   "version": "1.0.0",
   "description": "Backend API for PROJECT AQUA THISTLE - AI-powered financial mentorship platform",
