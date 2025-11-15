@@ -13,4 +13,4 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/dist ./dist
 COPY --from=base /app/.env.example ./
 EXPOSE 3000
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/src/app.js"]
